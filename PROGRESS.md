@@ -1,16 +1,19 @@
 # breakdig progress
 
-State as of 2026-09-29: v0.1.0 is feature-complete and release-ready. Nothing has been
-published. There is a local git repo with one commit and no remote; the owner creates
-the GitHub repo and ships.
+State as of 2026-09-29: v0.1.0 is released. The repo is public at
+https://github.com/Booyaka101/breakdig, the GitHub release has the wheel, sdist and Windows
+zip, and the same wheel and sdist are on PyPI. The r/SP404 post has not gone up.
 
 ## What is verified (on this PC: Windows 11, RTX 4090, driver 610.88, Python 3.11)
 
 - Test suite: `BREAKDIG_MODELS=.scratch/models .venv/Scripts/python -m pytest -q -rs`
   gives 174 passed in 111 s, no skips, the `gpu` tests running real Demucs and beat_this on
   the 4090. `.github/workflows/ci.yml` runs the rest on Windows and Linux with CPU torch;
-  the same steps in a clean CPU-only venv gave 170 passed and the 4 gpu tests skipped. It
-  has not run on GitHub yet, since there is no remote.
+  the same steps in a clean CPU-only venv gave 170 passed and the 4 gpu tests skipped.
+  The first GitHub run failed four tests that only held on this PC (Windows path
+  separators, a case-sensitive `*.wav` glob on Linux, and float WAVs whose PEAK chunk
+  records the second they were written). With those fixed, CI and the Release workflow
+  are green on both runners at v0.1.0.
 - A full review pass (each finding reproduced before it was fixed) led to:
   - Export: SP-404 reruns key sections on source and exact span, so a longer section from
     the same first bar is no longer skipped; numbering continues past deleted files; an
@@ -238,43 +241,19 @@ the GitHub repo and ships.
     pass. Nothing is at 0.6 or above.
   - The query refactor was checked byte for byte against a recorded baseline
     (`.scratch/baseline.py`, 1106 sections).
-- Checked read-only: the PyPI name `breakdig` is free (404), and github.com/Booyaka101
-  has no breakdig repo yet.
+- The published release: its zip holds the same wheel byte for byte, both .bat files are
+  CRLF, twine check passes, the wheel installs and imports outside the repo, `pip
+  download breakdig==0.1.0` fetches it from PyPI, and the README GIF loads from GitHub.
 
 ## Next steps for the owner
 
-1. Create an empty GitHub repo `Booyaka101/breakdig` (no README or licence, the local repo
-   has them). The README's GIF and pyproject's URLs point there. If you use another name,
-   fix both before uploading to PyPI, because PyPI renders the README from the upload and
-   it cannot be edited afterwards.
-2. Push. The local repo already has one commit on `main`, with `.gitignore` keeping out
-   `.venv`, `.scratch` (test music, models, demo indexes), `dist` and build leftovers:
-   ```
-   cd D:\Repos\ideasreakdig
-   git remote add origin https://github.com/Booyaka101/breakdig.git
-   git push -u origin main
-   ```
-   CI (`.github/workflows/ci.yml`) then runs the tests on Windows and Linux. Check it on
-   the exact commit:
-   `gh api repos/Booyaka101/breakdig/commits/HEAD/check-runs --jq ".check_runs[] | [.name, .conclusion]"`
-3. Change "0.1.0 (unreleased)" in CHANGELOG.md to the release date, commit, push, and wait
-   for CI again.
-4. Tag it: `git tag v0.1.0` then `git push origin v0.1.0`. The Release workflow
-   (`.github/workflows/release.yml`) runs the tests on that commit, checks the tag matches
-   `__version__`, builds the wheel, sdist and Windows zip, and attaches them to a draft
-   release with the 0.1.0 section of CHANGELOG.md as notes. Look the draft over and
-   publish it on GitHub.
-5. Upload to PyPI if you want `pip install breakdig` to work: download the wheel and sdist
-   from the release and `twine upload` them. This needs a PyPI account and token, which I
-   did not create.
-6. Only then post to r/SP404; the draft is `.scratch/post/r-sp404-draft.md`.
-7. Open the grooveclean cross-link PR once the breakdig repo is public, since the link 404s
-   until then. It is committed on a local branch, not pushed:
-   ```
-   cd D:\Repos\ideas\grooveclean
-   git push -u origin breakdig-link
-   gh pr create --fill
-   ```
+1. Post to r/SP404. The draft is `.scratch/post/r-sp404-draft.md`, with notes on the
+   parts to check first.
+2. Merge grooveclean PR #8 (the breakdig link in its README) if it has not been merged.
+3. Later releases: bump `__version__`, add a dated CHANGELOG section, push, wait for CI on
+   that commit, then push a `v<version>` tag. The Release workflow makes a draft release;
+   publish it, then `twine upload` its wheel and sdist (the PyPI token is in
+   `~/.pypirc`).
 
 ## Known gaps and decisions left open
 
