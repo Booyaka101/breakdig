@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>breakdig</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg: #16181c; --panel: #1f2228; --line: #30343c; --text: #e6e6e6; --dim: #9aa0a8;
+          --accent: #f0a030; --good: #6cc070; --bad: #e06060; }
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: 32px; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, sans-serif; }
+  header { display: flex; align-items: baseline; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 18px; color: var(--accent); letter-spacing: .5px; }
+  header .dim { font-size: 12px; }
+  .dim { color: var(--dim); }
+  form#filters { display: flex; flex-wrap: wrap; align-items: end; gap: 14px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  fieldset { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  legend, label.cap { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--dim); padding: 0; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  input, select, button { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; }
+  input[type=number] { width: 64px; }
+  input[type=checkbox], input[type=radio] { accent-color: var(--accent); }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: #111; border-color: var(--accent); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  .stems label { display: inline-flex; gap: 4px; align-items: center; }
+  main { padding: 0 20px 150px; }
+  #summary { padding: 10px 0; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--dim); font-weight: 500; position: sticky; top: 0; background: var(--bg); }
+  th[data-sort] { cursor: pointer; }
+  th.sorted { color: var(--accent); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.track { max-width: 480px; overflow: hidden; text-overflow: ellipsis; }
+  td.track .album { color: var(--dim); }
+  tr:hover td { background: #22252b; }
+  tr.playing td { background: #2a2518; }
+  td button.play { width: 32px; padding: 3px 0; }
+  .seam { color: var(--bad); font-size: 11px; margin-left: 6px; }
+  svg.levels { display: block; height: 16px; background: var(--panel); }
+  svg.levels rect { fill: var(--accent); stroke: var(--panel); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+  #dock { position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel); border-top: 1px solid var(--line); padding: 10px 20px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+  #volume { width: 90px; padding: 0; }
+  #now { min-width: 220px; max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #out { width: 320px; }
+  #log { flex-basis: 100%; max-height: 90px; overflow: auto; font-size: 12px; }
+  #log div { display: flex; gap: 8px; align-items: center; }
+  #log .ok { color: var(--good); } #log .err { color: var(--bad); }
+  #log button { padding: 0 6px; font-size: 11px; }
+  .empty { padding: 40px 0; text-align: center; }
+  code { background: var(--panel); padding: 1px 5px; border-radius: 3px; }
+  @media (max-width: 800px) {
+    header, form#filters, #dock { padding-left: 10px; padding-right: 10px; }
+    main { padding-left: 10px; padding-right: 10px; }
+    td.track { max-width: 40vw; }
+    #now { min-width: 0; max-width: none; flex-basis: 100%; }
+    #out { width: auto; flex: 1; min-width: 12em; }
+    #log { max-height: 3.6em; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>breakdig</h1>
+  <span id="stats" class="dim"></span>
+</header>
+
+<form id="filters">
+  <fieldset>
+    <legend>Stems</legend>
+    <div class="row">
+      <select id="mode" aria-label="stems mode" title="Only: these stems play and the rest are silent. Without: these stems are silent.">
+        <option value="only">only</option>
+        <option value="no">without</option>
+      </select>
+      <span class="stems" id="stems"></span>
+    </div>
+  </fieldset>
+  <fieldset>
+    <label class="cap" for="min_bars">Min bars</label>
+    <input id="min_bars" type="number" min="1" value="2">
+  </fieldset>
+  <fieldset>
+    <label class="cap" for="silence_db" title="How far below the rest a stem must sit to count as silent. Lower finds more, with more bleed.">Silence dB</label>
+    <input id="silence_db" type="number" min="1" max="60" value="30">
+  </fieldset>
+  <fieldset>
+    <label class="cap" for="cleaner_than" title="Only sections whose Clean dB is at or below this.">Cleaner than</label>
+    <input id="cleaner_than" type="number" step="any" placeholder="-25">
+  </fieldset>
+  <fieldset>
+    <label class="cap" for="bpm">BPM</label>
+    <input id="bpm" placeholder="90 or 85-100" size="11">
+  </fieldset>
+  <fieldset>
+    <label class="cap" for="search">Search</label>
+    <input id="search" placeholder="artist, title, album, path" size="24">
+  </fieldset>
+  <fieldset>
+    <legend>&nbsp;</legend>
+    <label class="row"><input id="skip_seams" type="checkbox"> skip seams</label>
+  </fieldset>
+  <fieldset>
+    <legend>&nbsp;</legend>
+    <button class="primary" type="submit">Find</button>
+  </fieldset>
+</form>
+
+<main>
+  <div id="summary" class="dim" aria-live="polite"></div>
+  <table id="results" hidden>
+    <thead><tr>
+      <th><input type="checkbox" id="all" title="select all" aria-label="select all shown"></th>
+      <th></th>
+      <th data-sort="artist" tabindex="0">Track</th>
+      <th class="num" data-sort="bars" tabindex="0">Bars</th>
+      <th class="num">Start</th>
+      <th class="num">End</th>
+      <th class="num" data-sort="bpm" tabindex="0">BPM</th>
+      <th class="num" data-sort="clean" tabindex="0" title="Loudest unwanted stem minus the target, in dB. Lower is cleaner.">Clean dB</th>
+      <th title="Each stem per bar, top to bottom in the order of the stem boxes. Brighter is louder against the mix.">Stems</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+  <div id="empty" class="empty dim" hidden></div>
+</main>
+
+<div id="dock">
+  <label class="row"><input type="checkbox" id="loop" checked> loop</label>
+  <label class="row">volume <input type="range" id="volume" min="0" max="1" step="0.01" value="1"></label>
+  <span id="now" class="dim" aria-live="polite">Space plays the selected row, arrow keys move.</span>
+  <span style="flex:1"></span>
+  <input id="out" title="export folder" aria-label="export folder">
+  <label class="row" title="16-bit, BRK_0001.WAV names and an index.csv">
+    <select id="sp404" aria-label="export format">
+      <option value="">wav files</option>
+      <option value="mk2">SP-404 MKII</option>
+      <option value="sx">SP-404 SX / A</option>
+    </select></label>
+  <label class="row" title="Separate each section again and keep only these stems, in previews and exports. Takes a few seconds a clip.">keep
+    <select id="keep">
+      <option value="">whole mix</option>
+      <option value="drums">drums</option>
+      <option value="drums+bass">drums + bass</option>
+      <option value="drums+bass+other">no vocals</option>
+      <option value="bass">bass</option>
+      <option value="vocals">vocals</option>
+      <option value="other">other</option>
+    </select></label>
+  <button class="primary" id="export" disabled>Export 0</button>
+  <button type="button" id="clear" title="untick everything, including rows the current search hides" hidden>clear</button>
+  <div id="log"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let sort = "clean", rows = [], current = -1, searches = 0, exporting = false;
+let shownId = null, ctx = null, gain = null, source = null, plays = 0, loading = null;
+const picked = new Set();  // survives a new search or sort, so a pick can be built up across several
+const buffers = new Map();  // decoded clips, oldest first
+const BUFFER_BYTES = 150e6;  // decoded audio is 32-bit float, about 23 MB a minute in stereo at 48 kHz
+const FIELDS = ["mode", "min_bars", "silence_db", "cleaner_than", "bpm", "search", "skip_seams"];
+const SORT_DIR = {artist: "ascending", bars: "descending", bpm: "ascending", clean: "ascending"};
+
+function clock(t) {
+  const ms = Math.round(t * 1000), m = Math.floor(ms / 60000);
+  return `${m}:${((ms - m * 60000) / 1000).toFixed(3).padStart(6, "0")}`;
+}
+function el(tag, props = {}, ...kids) {
+  const e = Object.assign(document.createElement(tag), props);
+  e.append(...kids);
+  return e;
+}
+async function get(url, opts = {}) {
+  let r;
+  try {
+    r = await fetch(url, opts);
+  } catch (e) {
+    throw e.name === "AbortError" ? e : new Error("breakdig is not running. Start it again with: breakdig ui");
+  }
+  if (r.ok) return r;
+  const d = (await r.json().catch(() => ({}))).detail;
+  throw new Error(typeof d === "string" ? d : Array.isArray(d) ?
+    d.map(x => `${x.loc.at(-1)}: ${x.msg}`).join("; ") : r.statusText);
+}
+async function api(url, body) {
+  const r = await get(url, body === undefined ? {} :
+    {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+  return r.json();
+}
+
+async function loadStats() {
+  const s = await api("/api/stats");
+  const hours = (s.audio_seconds / 3600).toFixed(1);
+  $("#stats").textContent = `${s.ok} tracks, ${hours} h, ${s.bars} bars · ${s.home} · v${s.version}`;
+  $("#stems").replaceChildren(...s.stems.map(st =>
+    el("label", {}, el("input", {type: "checkbox", value: st, checked: st === "drums"}), st)));
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem("breakdig.filters")); } catch {}
+  if (saved && Array.isArray(saved.stems)) {
+    for (const k of FIELDS) if (k in saved) $("#" + k)[k === "skip_seams" ? "checked" : "value"] = saved[k];
+    document.querySelectorAll("#stems input").forEach(i => { i.checked = saved.stems.includes(i.value); });
+    if (s.sorts.includes(saved.sort)) sort = saved.sort;
+  }
+  $("#out").value = localStorage.getItem("breakdig.out") || s.default_out;
+  return s;
+}
+
+function query() {
+  const stems = [...document.querySelectorAll("#stems input:checked")].map(i => i.value);
+  const p = new URLSearchParams({[$("#mode").value]: stems.join(","), min_bars: $("#min_bars").value || 2,
+                               silence_db: $("#silence_db").value || 30, sort});
+  for (const k of ["cleaner_than", "bpm", "search"]) if ($("#" + k).value.trim()) p.set(k, $("#" + k).value.trim());
+  if ($("#skip_seams").checked) p.set("skip_seams", "true");
+  const saved = {stems, sort};
+  for (const k of FIELDS) saved[k] = k === "skip_seams" ? $("#" + k).checked : $("#" + k).value;
+  localStorage.setItem("breakdig.filters", JSON.stringify(saved));
+  return p;
+}
+
+async function search(ev) {
+  ev && ev.preventDefault();
+  const ticked = document.querySelectorAll("#stems input:checked").length;
+  const mine = ++searches;  // a slow earlier search must not overwrite a later one
+  const fail = message => {
+    $("#summary").textContent = message;
+    $("#results").hidden = $("#empty").hidden = true;
+    rows = [];
+  };
+  if (!ticked || ticked === document.querySelectorAll("#stems input").length) {
+    fail(ticked ? "Untick at least one stem. All of them is the whole mix." : "Tick at least one stem.");
+    return;
+  }
+  $("#summary").textContent = "Searching...";
+  let data;
+  try {
+    data = await api("/api/sections?" + query());
+  } catch (e) {
+    if (mine === searches) fail(e.message);
+    return;
+  }
+  if (mine !== searches) return;
+  rows = data.sections;
+  current = rows.findIndex(s => s.id === shownId);
+  const shown = rows.length < data.total ? `, showing the first ${rows.length}` : "";
+  $("#summary").textContent = `${data.total} section(s), ${data.pattern}${shown}.`;
+  document.querySelectorAll("th[data-sort]").forEach(th => {
+    th.classList.toggle("sorted", th.dataset.sort === sort);
+    if (th.dataset.sort === sort) th.setAttribute("aria-sort", SORT_DIR[sort]);
+    else th.removeAttribute("aria-sort");
+  });
+  const tbody = $("#results tbody");
+  tbody.replaceChildren(...rows.map((s, i) => {
+    const bpm = s.bpm ? s.bpm.toFixed(1) : "?";
+    const track = el("td", {className: "track", title: s.path},
+      `${s.artist} - ${s.title}`, s.album ? el("span", {className: "album"}, ` · ${s.album}`) : "",
+      s.seam ? el("span", {className: "seam", title: "crosses a chunk seam in a long file"}, "seam") : "");
+    const name = `${s.artist} - ${s.title}, bars ${s.first_bar}-${s.last_bar}`;
+    const tr = el("tr", {},
+      el("td", {}, el("input", {type: "checkbox", value: s.id, checked: picked.has(s.id), onchange: pick,
+                                ariaLabel: `pick ${name}`})),
+      el("td", {}, el("button", {className: "play", type: "button", textContent: "▶",
+                                 onclick: () => play(i), ariaLabel: `play ${name}`})),
+      track,
+      el("td", {className: "num"}, `${s.bars}`),
+      el("td", {className: "num"}, clock(s.start)),
+      el("td", {className: "num"}, clock(s.end)),
+      el("td", {className: "num"}, bpm),
+      el("td", {className: "num"}, s.clean.toFixed(1)),
+      el("td", {}, levelStrip(s.levels)));
+    tr.dataset.i = i;
+    if (i === current) tr.classList.add("playing");
+    return tr;
+  }));
+  showPlaying();
+  $("#all").checked = rows.length > 0 && rows.every(s => picked.has(s.id));
+  $("#results").hidden = rows.length === 0;
+  const empty = $("#empty");
+  empty.hidden = rows.length > 0;
+  countSelected();
+  if (!rows.length) {
+    empty.replaceChildren();
+    const st = await api("/api/stats"), failed = st.by_status.failed || 0, code = t => el("code", {}, t);
+    if (mine !== searches) return;
+    if (st.ok === 0 && failed) empty.append(`The index is empty and ${failed} file(s) failed. See `,
+      code("breakdig stats --failures"), ", then run ", code("breakdig index --retry-failed <folder>"), ".");
+    else if (st.ok === 0) empty.append("The index is empty. Run ", code("breakdig index <folder>"),
+                                       " first.");
+    else if (data.no_track_matches) empty.append(`No indexed track matches "${$("#search").value.trim()}".`);
+    else empty.append("No matching sections. Try Min bars 1, a lower Silence dB such as 25, a wider BPM range, or other stems.");
+  }
+}
+
+const SVG = "http://www.w3.org/2000/svg";
+function levelStrip(levels) {
+  const svg = document.createElementNS(SVG, "svg");
+  const attrs = (e, a) => { for (const [k, v] of Object.entries(a)) e.setAttribute(k, v); return e; };
+  attrs(svg, {class: "levels", viewBox: `0 0 ${levels.length} 4`, preserveAspectRatio: "none",
+              width: Math.max(32, Math.min(8 * levels.length, 128)), height: 16, "aria-hidden": "true"});
+  // dB against the mix: 0 is a stem that is the whole mix, -30 and under is as good as silent.
+  levels.forEach((bar, x) => bar.forEach((db, y) => svg.append(attrs(document.createElementNS(SVG, "rect"),
+    {x, y, width: 1, height: 1, "fill-opacity": Math.max(0, Math.min(1, 1 + db / 30)).toFixed(2)}))));
+  return svg;
+}
+
+const bytes = buf => buf.length * buf.numberOfChannels * 4;
+const keep = () => $("#keep").value;
+async function clipBuffer(id, signal) {
+  const key = `${id} ${keep()}`;
+  if (buffers.has(key)) return buffers.get(key);
+  const r = await get(`/api/clip/${id}.wav?` + new URLSearchParams(keep() ? {keep: keep()} : {}),
+                      {signal});
+  const buf = await ctx.decodeAudioData(await r.arrayBuffer());
+  if (bytes(buf) > BUFFER_BYTES / 4) return buf;  // a long clip would push out many short ones
+  buffers.set(key, buf);
+  let total = 0;
+  for (const b of buffers.values()) total += bytes(b);
+  for (const [k, b] of buffers) {
+    if (total <= BUFFER_BYTES) break;
+    buffers.delete(k);
+    total -= bytes(b);
+  }
+  return buf;
+}
+function showPlaying() {
+  document.querySelectorAll("button.play").forEach(b => {
+    const on = !!source && b.closest("tr").dataset.i === `${current}`;
+    b.textContent = on ? "■" : "▶";
+    b.ariaPressed = `${on}`;
+  });
+}
+function stop() {
+  if (source) { source.onended = null; source.stop(); source = null; }
+  showPlaying();
+}
+
+// An AudioBufferSourceNode loops without the gap an <audio loop> element leaves at the loop point.
+async function play(i) {
+  if (i < 0 || i >= rows.length) return;
+  const s = rows[i], mine = ++plays;
+  document.querySelectorAll("tr.playing").forEach(r => r.classList.remove("playing"));
+  const tr = document.querySelector(`tr[data-i="${i}"]`);
+  tr.classList.add("playing");
+  tr.scrollIntoView({block: "nearest"});
+  if (current === i && source) { stop(); return; }
+  stop();
+  current = i;
+  shownId = s.id;
+  const name = `${s.artist} - ${s.title}, bars ${s.first_bar}-${s.last_bar}`;
+  $("#now").textContent = buffers.has(`${s.id} ${keep()}`) ? name
+    : `${keep() ? "Separating" : "Loading"} ${name}...`;
+  $("#now").className = "";
+  if (!ctx) {
+    ctx = new AudioContext();
+    gain = ctx.createGain();
+    gain.gain.value = +$("#volume").value;
+    gain.connect(ctx.destination);
+  }
+  if (loading) loading.abort();  // stepping through rows would otherwise fetch and decode every one
+  const ours = loading = new AbortController();
+  let buf;
+  try {
+    buf = await clipBuffer(s.id, ours.signal);
+  } catch (e) {
+    if (mine === plays) $("#now").textContent = "Cannot play: " + e.message;
+    return;
+  }
+  if (mine !== plays) return;  // another row was picked while this one loaded
+  if (loading === ours) loading = null;
+  $("#now").textContent = name;
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.loop = $("#loop").checked;
+  src.connect(gain);
+  src.onended = () => { if (source === src) { source = null; showPlaying(); } };
+  source = src;
+  ctx.resume();
+  src.start();
+  showPlaying();
+}
+
+function pick(e) {
+  e.target.checked ? picked.add(e.target.value) : picked.delete(e.target.value);
+  countSelected();
+}
+function countSelected() {
+  $("#export").textContent = `Export ${picked.size}`;
+  $("#export").disabled = exporting || picked.size === 0;
+  $("#clear").hidden = picked.size === 0;
+}
+
+function logLine(cls, text, path) {
+  const line = el("div", {className: cls}, text);
+  if (path) line.append(el("button", {type: "button", textContent: "reveal", onclick: () =>
+    api("/api/reveal", {path}).catch(e => logLine("err", e.message))}));
+  $("#log").prepend(line);
+}
+
+$("#export").addEventListener("click", async () => {
+  const ids = [...picked], out = $("#out").value.trim();
+  localStorage.setItem("breakdig.out", out);
+  exporting = true;
+  countSelected();
+  try {
+    const r = await api("/api/export", {ids, out, sp404: $("#sp404").value || null, keep: keep()});
+    for (const x of r.results) {
+      if (x.path) logLine("ok", x.path, x.path);
+      else if (x.skipped) logLine("dim", `${x.id} is already in ${r.out}`);
+      else logLine("err", `${x.id}: ${x.error}`);
+      // Failures are in the log; keeping them picked would only repeat them, often out of sight.
+      picked.delete(x.id);
+    }
+    document.querySelectorAll("#results tbody input").forEach(i => { i.checked = picked.has(i.value); });
+    $("#all").checked = false;
+  } catch (e) {
+    logLine("err", e.message);
+  }
+  exporting = false;
+  countSelected();
+});
+
+$("#clear").addEventListener("click", () => {
+  picked.clear();
+  document.querySelectorAll("#results input[type=checkbox]").forEach(i => { i.checked = false; });
+  countSelected();
+});
+$("#filters").addEventListener("submit", search);
+$("#mode").addEventListener("change", search);
+$("#stems").addEventListener("change", search);
+$("#skip_seams").addEventListener("change", search);
+$("#loop").checked = localStorage.getItem("breakdig.loop") !== "false";
+$("#volume").value = localStorage.getItem("breakdig.volume") ?? 1;
+$("#loop").addEventListener("change", e => {
+  if (source) source.loop = e.target.checked;
+  localStorage.setItem("breakdig.loop", e.target.checked);
+});
+$("#sp404").value = localStorage.getItem("breakdig.sp404") || "";
+if ($("#sp404").selectedIndex < 0) $("#sp404").value = "";
+$("#sp404").addEventListener("change", e => localStorage.setItem("breakdig.sp404", e.target.value));
+$("#keep").value = localStorage.getItem("breakdig.keep") || "";
+if ($("#keep").selectedIndex < 0) $("#keep").value = "";
+$("#keep").addEventListener("change", e => {
+  localStorage.setItem("breakdig.keep", e.target.value);
+  if (source) { stop(); play(current); }
+});
+$("#volume").addEventListener("input", e => {
+  if (gain) gain.gain.value = +e.target.value;
+  localStorage.setItem("breakdig.volume", e.target.value);
+});
+$("#all").addEventListener("change", e => {
+  document.querySelectorAll("#results tbody input").forEach(i => {
+    i.checked = e.target.checked;
+    pick({target: i});
+  });
+});
+document.querySelectorAll("th[data-sort]").forEach(th => {
+  const by = () => { sort = th.dataset.sort; search(); };
+  th.addEventListener("click", by);
+  th.addEventListener("keydown", e => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); by(); }
+  });
+});
+new ResizeObserver(() => {
+  const h = $("#dock").offsetHeight;
+  document.querySelector("main").style.paddingBottom = `${h + 20}px`;
+  document.documentElement.style.scrollPaddingBottom = `${h}px`;
+}).observe($("#dock"));
+document.addEventListener("keydown", e => {
+  if (e.target.matches("input:not([type=checkbox]), select") || !rows.length) return;
+  // Space ticks a checkbox and presses a button; anywhere else it plays the selected row.
+  if (e.key === " " && e.target.matches("input[type=checkbox], button, th")) return;
+  const to = {" ": current < 0 ? 0 : current, ArrowDown: current + 1, ArrowUp: Math.max(current - 1, 0)}[e.key];
+  if (to === undefined) return;
+  e.preventDefault();
+  play(to);
+  if (e.key !== " ") document.querySelector(`tr[data-i="${to}"] button.play`)?.focus({preventScroll: true});
+});
+
+loadStats().then(() => search()).catch(e => { $("#summary").textContent = "Cannot reach breakdig: " + e.message; });
+</script>
+</body>
+</html>

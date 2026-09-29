@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "breakdig"
+dynamic = ["version"]
+description = "Find bar-exact drum breaks, acapellas and other sections in your own music library, using GPU stem separation and downbeat tracking."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Booyaka101" }]
+requires-python = ">=3.11"
+keywords = ["drum breaks", "sampling", "stem separation", "demucs", "downbeat", "beat tracking", "sp-404", "crate digging"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Environment :: Web Environment",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Multimedia :: Sound/Audio :: Analysis",
+]
+dependencies = [
+    "audio-separator[gpu]>=0.47",
+    "audioread>=2.1.9",  # audio-separator imports it, but librosa 1.0 stopped pulling it in
+    "beat-this>=1.1",
+    "numpy>=2",
+    "soundfile>=0.12",
+    "soxr>=0.3",
+    "mutagen>=1.47",
+    "fastapi>=0.115",
+    "starlette>=0.39",
+    "uvicorn>=0.36",
+    "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+breakdig = "breakdig.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Booyaka101/breakdig"
+Issues = "https://github.com/Booyaka101/breakdig/issues"
+Changelog = "https://github.com/Booyaka101/breakdig/blob/main/CHANGELOG.md"
+
+[tool.setuptools.dynamic]
+version = { attr = "breakdig.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["breakdig*"]
+
+[tool.setuptools.package-data]
+"breakdig.web" = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "gpu: runs Demucs separation; skipped without CUDA",
+]
+filterwarnings = [
+    # starlette's TestClient nags about httpx2; the client works either way.
+    "ignore:Using `httpx` with `starlette.testclient`",
+]

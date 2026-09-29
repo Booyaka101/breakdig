@@ -1,0 +1,35 @@
+name: Release
+
+# Push a tag like v0.1.0 to test that commit and attach the wheel, sdist and Windows zip
+# to a draft release. Publishing the draft stays a manual step.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: python -m pip install build twine
+      - name: Tag matches the package version
+        run: test "v$(python -c 'import breakdig; print(breakdig.__version__)')" = "$GITHUB_REF_NAME"
+      - run: python -m build
+      - run: python -m twine check dist/*
+      - run: python packaging/make_windows_zip.py
+      - name: Notes from CHANGELOG.md
+        run: |
+          awk -v v="${GITHUB_REF_NAME#v}" '/^## /{p = index($0, "## " v) == 1; next} p' CHANGELOG.md > notes.md
+          test -s notes.md
+      - run: gh release create "$GITHUB_REF_NAME" dist/* --draft --verify-tag --title "breakdig $GITHUB_REF_NAME" --notes-file notes.md
+        env:
+          GH_TOKEN: ${{ github.token }}
