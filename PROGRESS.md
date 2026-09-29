@@ -249,8 +249,7 @@ zip, and the same wheel and sdist are on PyPI. The r/SP404 post has not gone up.
 
 1. Post to r/SP404. The draft is `.scratch/post/r-sp404-draft.md`, with notes on the
    parts to check first.
-2. Merge grooveclean PR #8 (the breakdig link in its README) if it has not been merged.
-3. Later releases: bump `__version__`, add a dated CHANGELOG section, push, wait for CI on
+2. Later releases: bump `__version__`, add a dated CHANGELOG section, push, wait for CI on
    that commit, then push a `v<version>` tag. The Release workflow makes a draft release;
    publish it, then `twine upload` its wheel and sdist (the PyPI token is in
    `~/.pypirc`).
