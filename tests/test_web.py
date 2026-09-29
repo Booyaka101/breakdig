@@ -185,6 +185,7 @@ def test_a_slow_clip_does_not_hold_up_another(client, monkeypatch):
         assert other.status_code == 200 and slow.result().status_code == 200
 
 
+@pytest.mark.skipif(os.name != "nt", reason="windows paths")
 def test_reveal_passes_the_path_as_its_own_argument(monkeypatch):
     calls = []
     monkeypatch.setattr(web.sys, "platform", "win32")

@@ -432,8 +432,8 @@ def test_edits_that_differ_only_between_the_sampled_bytes(cpu_indexer, fixture_a
     edit = x.copy()
     edit[4 * sr: 12 * sr] *= 0.25
     main, other = tmp_path / "main.wav", tmp_path / "instrumental.wav"
-    sf.write(main, x, sr, subtype="FLOAT")
-    sf.write(other, edit, sr, subtype="FLOAT")
+    sf.write(main, x, sr, subtype="PCM_32")  # FLOAT adds a PEAK chunk stamped with the write time
+    sf.write(other, edit, sr, subtype="PCM_32")
     assert scan.content_key(str(main)).key == scan.content_key(str(other)).key
     statuses, known = index_paths(cpu_indexer, [main, other])
     assert len(statuses) == 2 and known == 0

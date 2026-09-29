@@ -1,4 +1,5 @@
 import csv
+import os
 import struct
 import subprocess
 
@@ -192,7 +193,7 @@ def test_sp404_rerun_after_a_file_was_deleted(fixture_audio, tmp_path):
     (tmp_path / "BRK_0002.WAV").unlink()
     again = export([section(mix, 5, 8, 8.0, 16.0), section(mix, 3, 4, 4.0, 8.0)], str(tmp_path), sp404="mk2")
     # The deleted one is exported again, and no number in index.csv is reused.
-    assert [r.path.split("\\")[-1] for r in again] == ["BRK_0003.WAV", "BRK_0004.WAV"]
+    assert [os.path.basename(r.path) for r in again] == ["BRK_0003.WAV", "BRK_0004.WAV"]
     assert [r["file"] for r in read_index(tmp_path)] == [f"BRK_000{i}.WAV" for i in range(1, 5)]
 
 
@@ -273,7 +274,7 @@ def test_moved_source_finds_its_earlier_export(fixture_audio, tmp_path, sp404):
     (a,) = export([section(fixture_audio["mix"], key="abc123")], str(out), sp404=sp404)
     (b,) = export([section(moved, key="abc123")], str(out), sp404=sp404)
     assert b.skipped if sp404 else b.path == a.path
-    assert len(list(out.glob("*.wav"))) == 1
+    assert len([p for p in out.iterdir() if p.suffix.lower() == ".wav"]) == 1
 
 
 def test_index_csv_open_in_excel_stops_before_any_clip(fixture_audio, tmp_path, monkeypatch):
