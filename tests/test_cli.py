@@ -1,3 +1,4 @@
+import contextlib
 import json
 import socket
 import sqlite3
@@ -126,6 +127,7 @@ def test_a_mistyped_home_is_not_an_empty_index(capsys, tmp_path, cmd):
     (["find", "--limit", "0"], "must be 1 or more"),
     (["find", "--min-bars", "-1"], "must be 1 or more"),
     (["find", "--min-bars", "two"], "expected a whole number, got 'two'"),
+    (["index", "x", "--shifts", "-1"], "must be 0 or more"),
     (["ui", "--port", "70000"], "ports go up to 65535"),
     (["index", r'D:\My Music" --exclude *.tmp'], "has a quote in it"),
     (["export", "--pick", "banana", "--out", "x"], "section ids look like 12:5-8"),
@@ -211,6 +213,26 @@ def test_ui_port_in_use(capsys, tmp_path):
         Index(tmp_path).close()
         code, _, err = run(capsys, "ui", "--home", str(tmp_path), "--port", str(port), "--no-browser")
     assert code != 0 and f"port {port} is in use" in err
+
+
+def test_ui_host_that_is_not_this_machine(capsys, tmp_path):
+    Index(tmp_path).close()
+    code, _, err = run(capsys, "ui", "--home", str(tmp_path), "--host", "192.0.2.7", "--no-browser")
+    assert code != 0 and "cannot listen on 192.0.2.7" in err and "in use" not in err
+
+
+def test_ui_on_every_interface_shows_a_url_a_browser_can_open(capsys, tmp_path, monkeypatch):
+    Index(tmp_path).close()
+    monkeypatch.setattr(socket, "create_server", lambda *a, **kw: contextlib.nullcontext())
+    monkeypatch.setattr(uvicorn, "run", lambda app, host, **kw: print("serving", host))
+    code, out, err = run(capsys, "ui", "--home", str(tmp_path), "--host", "0.0.0.0", "--no-browser")
+    assert code == 0 and "on http://127.0.0.1:" in out and "serving 0.0.0.0" in out
+    assert "anyone who can reach this machine" in err
+
+
+def test_no_command_prints_help(capsys):
+    code, out, _ = run(capsys)
+    assert code == 0 and out.startswith("usage:")
 
 
 def test_clock_rounds_before_splitting_minutes():

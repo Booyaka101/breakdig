@@ -158,6 +158,7 @@
 <script>
 const $ = s => document.querySelector(s);
 let sort = "clean", rows = [], current = -1, searches = 0, exporting = false;
+const HINT = $("#now").textContent;
 let shownId = null, ctx = null, gain = null, source = null, plays = 0, loading = null;
 const picked = new Set();  // survives a new search or sort, so a pick can be built up across several
 const buffers = new Map();  // decoded clips, oldest first
@@ -229,6 +230,8 @@ async function search(ev) {
     $("#summary").textContent = message;
     $("#results").hidden = $("#empty").hidden = true;
     rows = [];
+    current = -1;
+    unlisted();
   };
   if (!ticked || ticked === document.querySelectorAll("#stems input").length) {
     fail(ticked ? "Untick at least one stem. All of them is the whole mix." : "Tick at least one stem.");
@@ -245,6 +248,7 @@ async function search(ev) {
   if (mine !== searches) return;
   rows = data.sections;
   current = rows.findIndex(s => s.id === shownId);
+  if (current < 0) unlisted();
   const shown = rows.length < data.total ? `, showing the first ${rows.length}` : "";
   $("#summary").textContent = `${data.total} section(s), ${data.pattern}${shown}.`;
   document.querySelectorAll("th[data-sort]").forEach(th => {
@@ -335,6 +339,16 @@ function showPlaying() {
 function stop() {
   if (source) { source.onended = null; source.stop(); source = null; }
   showPlaying();
+}
+// The previewed row is no longer listed, so nothing on the page could stop it.
+function unlisted() {
+  if (loading) {
+    plays++;
+    loading.abort();
+    loading = null;
+    $("#now").textContent = HINT;
+  }
+  stop();
 }
 
 // An AudioBufferSourceNode loops without the gap an <audio loop> element leaves at the loop point.

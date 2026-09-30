@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- Reads WavPack, Monkey's Audio, Musepack, MP2 and AIFC files too.
+- Artist and title come from WAV LIST/INFO and WMA tags, which were ignored before.
+- Indexing a drive root skips the Recycle Bin, System Volume Information and the `._` files
+  macOS leaves on FAT and exFAT drives.
+- A lossless copy of a track first indexed from an MP3 or other lossy file now takes its
+  place, so sections are cut from the lossless file. The lossy one becomes its duplicate.
+- The duplicate check no longer slows down as a sample pack of short loops is indexed, and
+  long mixes use less memory during beat tracking.
+- `breakdig ui --host 0.0.0.0` prints and opens a URL a browser can use, and a host that
+  cannot be bound says so instead of claiming the port is in use.
+- In the UI, a preview stops when a new search no longer lists its row, and isolated
+  previews you skipped past while they queued are dropped instead of separated, so the one
+  you want is not kept waiting.
+- `--shifts` rejects negative numbers up front, and `breakdig` on its own prints the help.
+
 ## 0.1.0 (2026-09-29)
 
 First release.

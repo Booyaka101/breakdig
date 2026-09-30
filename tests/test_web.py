@@ -1,3 +1,4 @@
+import asyncio
 import io
 import os
 import threading
@@ -96,6 +97,50 @@ def test_isolated_preview_and_export(client, tmp_path, monkeypatch):
     assert len(sep.peaks) == 3
     for bad in ("drums,bass,vocals,other", "kazoo"):
         assert "keep takes one to three of" in client.get("/api/clip/1:5-8.wav", params={"keep": bad}).text
+
+
+async def preview(app, keep, hang_up):
+    """GET an isolated preview over raw ASGI; the client disconnects once hang_up returns."""
+    messages = iter([{"type": "http.request", "body": b"", "more_body": False}])
+    sent = []
+
+    async def receive():
+        message = next(messages, None)
+        if message:
+            return message
+        await hang_up()
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        sent.append(message)
+    scope = {"type": "http", "method": "GET", "path": "/api/clip/1:5-8.wav",
+             "raw_path": b"/api/clip/1:5-8.wav", "query_string": f"keep={keep}".encode(),
+             "headers": [(b"host", b"127.0.0.1:8765")], "http_version": "1.1", "scheme": "http",
+             "server": ("127.0.0.1", 8765), "client": ("127.0.0.1", 50000), "root_path": ""}
+    await app(scope, receive, send)
+    return sent[0]["status"]
+
+
+def test_an_isolated_preview_the_page_gave_up_on_is_not_separated(client, monkeypatch):
+    started, release = threading.Event(), threading.Event()
+
+    class Busy(InputAsDrums):
+        def separate(self, *a, **kw):
+            started.set()
+            release.wait(30)
+            return super().separate(*a, **kw)
+    sep = Busy()
+    monkeypatch.setattr(web, "load_separator", lambda: sep)
+
+    async def both():
+        playing = asyncio.create_task(preview(client.app, "drums", asyncio.Event().wait))
+        await asyncio.to_thread(started.wait, 30)
+        queued = asyncio.Event()
+        abandoned = asyncio.create_task(preview(client.app, "bass", queued.set))
+        await queued.wait()
+        release.set()
+        return await asyncio.wait_for(asyncio.gather(playing, abandoned), 30)
+    assert asyncio.run(both()) == [200, 499] and len(sep.peaks) == 1
 
 
 def test_export_errors(client, tmp_path):

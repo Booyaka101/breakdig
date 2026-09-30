@@ -1,5 +1,6 @@
 """Local web UI: filter sections, audition them, export the keepers."""
 
+import asyncio
 import os
 import subprocess
 import sys
@@ -8,9 +9,11 @@ import weakref
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from starlette.requests import ClientDisconnect
 
 from .. import __version__, audio
 from ..db import STEMS, Index
@@ -114,6 +117,9 @@ def create_app(home=None, host: str = "127.0.0.1") -> FastAPI:
     # Two requests for one uncached clip would write the same file; other clips need not wait.
     clip_locks, clip_locks_guard = weakref.WeakValueDictionary(), threading.Lock()
     separator = SharedSeparator()
+    # Isolated previews queue here rather than on the separator, so one the page gave up on
+    # while it waited is dropped instead of separated.
+    isolating = asyncio.Lock()
 
     def open_index() -> Index:
         return Index(home)
@@ -152,16 +158,14 @@ def create_app(home=None, host: str = "127.0.0.1") -> FastAPI:
         return {"pattern": pattern.name, "total": len(found), "no_track_matches": no_track,
                 "sections": [s.to_dict() for s in found[:limit]]}
 
-    @app.get("/api/clip/{section_id}.wav")
-    def clip(section_id: str, keep: str | None = None):
-        keep = parse_keep(keep)
+    def lookup(section_id: str):
         with open_index() as index:
             try:
-                s = get_section(index, section_id)
+                return get_section(index, section_id)
             except ValueError as e:
                 raise HTTPException(404, str(e)) from None
-        # Keyed by content, not track id, so a re-indexed track never serves a stale clip.
-        dest = clips / f"{s.key[:16]}_{s.first_bar}-{s.last_bar}{'_' + stems_name(keep) if keep else ''}.wav"
+
+    def make_clip(s, keep: frozenset, dest: Path):
         with clip_locks_guard:
             lock = clip_locks.setdefault(dest, threading.Lock())
         with lock:
@@ -170,11 +174,36 @@ def create_app(home=None, host: str = "127.0.0.1") -> FastAPI:
                     raise HTTPException(404, f"source file is gone: {s.path}")
                 try:
                     c = cut(s.path, s.start, s.end, keep, separator)
-                except (audio.DecodeError, ValueError, RuntimeError) as e:
+                except (audio.DecodeError, ValueError, RuntimeError, OSError) as e:
                     raise HTTPException(500, str(e)) from None
                 clips.mkdir(parents=True, exist_ok=True)
                 prune(clips, CLIP_CACHE_BYTES)
                 write_wav(c, dest, s)
+
+    @app.get("/api/clip/{section_id}.wav")
+    async def clip(section_id: str, request: Request, keep: str | None = None):
+        keep = parse_keep(keep)
+        s = await run_in_threadpool(lookup, section_id)
+        # Keyed by content, not track id, so a re-indexed track never serves a stale clip.
+        dest = clips / f"{s.key[:16]}_{s.first_bar}-{s.last_bar}{'_' + stems_name(keep) if keep else ''}.wav"
+        if keep and not dest.exists():
+            # Once the (empty) body is read, the next message is the disconnect. Waiting on it also
+            # keeps the server reading the socket, so a dropped connection is seen while queued.
+            # request.is_disconnected() never reports it behind an @app.middleware.
+            try:
+                await request.body()
+            except ClientDisconnect:
+                return Response(status_code=499)
+            gone = asyncio.ensure_future(request.receive())
+            try:
+                async with isolating:
+                    if gone.done():
+                        return Response(status_code=499)
+                    await run_in_threadpool(make_clip, s, keep, dest)
+            finally:
+                gone.cancel()
+        else:
+            await run_in_threadpool(make_clip, s, keep, dest)
         return FileResponse(dest, media_type="audio/wav")
 
     @app.post("/api/export")

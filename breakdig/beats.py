@@ -25,9 +25,16 @@ class BeatTracker:
         downbeats = np.asarray(downbeats, dtype=np.float64)
         # Keep downbeats locked onto the refined beat they came from.
         if len(beats) and len(downbeats):
-            nearest = np.abs(downbeats[:, None] - beats[None, :]).argmin(axis=1)
-            downbeats = beats[nearest]
+            downbeats = beats[nearest(beats, downbeats)]
         return beats, np.unique(downbeats)
+
+
+def nearest(sorted_times: np.ndarray, times: np.ndarray) -> np.ndarray:
+    """The index of the closest of sorted_times to each of times, the earlier one on a tie."""
+    if len(sorted_times) == 1:
+        return np.zeros(len(times), dtype=np.intp)
+    i = np.clip(np.searchsorted(sorted_times, times), 1, len(sorted_times) - 1)
+    return np.where(times - sorted_times[i - 1] <= sorted_times[i] - times, i - 1, i)
 
 
 def refine(times: np.ndarray, mono: np.ndarray, sr: int, radius: float = 0.025) -> np.ndarray:

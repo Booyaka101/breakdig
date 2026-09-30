@@ -269,13 +269,17 @@ The index is small: about 25 KB per minute of audio, so 90 KB or so for a typica
 
 ## Files it handles and skips
 
-MP3, FLAC, WAV, AIFF, M4A (AAC or ALAC), AAC, OGG Vorbis, Opus and WMA. Mono, 8-bit, 24-bit,
-float and odd sample rates are fine. The same audio at two paths or in two formats is only
-separated once; the copy is recorded as a duplicate and takes over if the original is deleted.
+MP3, FLAC, WAV, AIFF, M4A (AAC or ALAC), AAC, OGG Vorbis, Opus, WMA, WavPack, Monkey's Audio,
+Musepack and MP2. Mono, 8-bit, 24-bit, float and odd sample rates are fine. The same audio at
+two paths or in two formats is only separated once; the copy is recorded as a duplicate and
+takes over if the original is deleted. A lossless copy of a track first indexed from a lossy
+file takes over from it, so exports come from the better file.
 An original on a drive that is not plugged in counts as still there.
 The exception is a raw .aac file, which does not record its encoder delay, next to the same
 track in another format. A file that moves or is renamed keeps its index entry, and so does one
 you retag. One you trim or edit is analysed again.
+
+The Recycle Bin, System Volume Information and macOS `._` files are not indexed.
 
 Skipped, logged, and listed by `breakdig stats --failures`: files that will not decode,
 DRM-protected iTunes files (.m4p), and tracks with fewer than 8 downbeats (`no_grid`; mostly
