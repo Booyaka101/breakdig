@@ -71,6 +71,18 @@ def probe(path: str) -> Probe:
     return Probe(duration, int(s.get("sample_rate") or 0), int(s.get("channels") or 0), bits)
 
 
+def tags(path: str) -> dict:
+    """The container's tags as ffprobe names them, lowercased, or {} if it cannot read the file."""
+    try:
+        r = _run(["ffprobe", "-v", "error", "-show_entries", "format_tags", "-of", "json", path])
+    except DecodeError:
+        return {}
+    if r.returncode != 0:
+        return {}
+    found = json.loads(r.stdout or b"{}").get("format", {}).get("tags") or {}
+    return {k.lower(): v for k, v in found.items()}
+
+
 def decode(path: str, start: float | None = None, end: float | None = None,
            info: Probe | None = None) -> np.ndarray:
     """Decode at the source rate and layout to float32 of shape (frames, channels).

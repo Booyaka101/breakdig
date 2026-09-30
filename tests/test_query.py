@@ -3,6 +3,7 @@ import math
 import numpy as np
 import pytest
 
+from breakdig.beats import nearest
 from breakdig.query import (PRESETS, Section, activity, bpm_between, cleanliness, crosses_seam,
                             matches, only, parse_bpm, parse_stems, runs, search_tracks, sections_in_track,
                             without)
@@ -223,3 +224,8 @@ def test_search_needs_every_word_somewhere():
     assert search_tracks([t], "winstons amen") == [t]
     assert search_tracks([t], "WINSTONS  funk") == [t]
     assert search_tracks([t], "winstons soul") == []
+
+
+def test_nearest_beat_takes_the_earlier_one_on_a_tie():
+    assert nearest(np.array([0, .5, 1, 1.5]), np.array([-1, .24, .25, .26, 9])).tolist() == [0, 0, 0, 1, 3]
+    assert nearest(np.array([2.0]), np.array([0, 5])).tolist() == [0, 0]

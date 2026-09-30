@@ -3,11 +3,13 @@
 State as of 2026-09-29: v0.1.0 is released. The repo is public at
 https://github.com/Booyaka101/breakdig, the GitHub release has the wheel, sdist and Windows
 zip, and the same wheel and sdist are on PyPI. The r/SP404 post has not gone up.
+On 2026-09-30 a fourth review pass (UI and core) was fixed on the `review-fixes` branch;
+see the Unreleased section of CHANGELOG.md.
 
 ## What is verified (on this PC: Windows 11, RTX 4090, driver 610.88, Python 3.11)
 
 - Test suite: `BREAKDIG_MODELS=.scratch/models .venv/Scripts/python -m pytest -q -rs`
-  gives 174 passed in 111 s, no skips, the `gpu` tests running real Demucs and beat_this on
+  gives 186 passed in 112 s, no skips, the `gpu` tests running real Demucs and beat_this on
   the 4090. `.github/workflows/ci.yml` runs the rest on Windows and Linux with CPU torch;
   the same steps in a clean CPU-only venv gave 170 passed and the 4 gpu tests skipped.
   The first GitHub run failed four tests that only held on this PC (Windows path
@@ -234,11 +236,32 @@ zip, and the same wheel and sdist are on PyPI. The r/SP404 post has not gone up.
   - This PC sets `NoDefaultCurrentDirectoryInExePath`, so a bare `install.bat` or
     `breakdig` typed in that folder is not found. Double-clicking works. `install.bat`
     now prints the launcher's full path for that reason.
+- Fourth review pass, each checked with the reviewer's own script before and after:
+  - A lossy original followed by a lossless copy now exports from the WAV
+    (`.scratch/review-core/lossy_first.py`).
+  - Indexing 400 short loops keeps a flat time per file (0.20 s for the first files, 0.18 s
+    for the last) where it grew from 0.15 s to 0.43 s, because `no_grid` loops no longer
+    keep a profile to compare against (`.scratch/review-core/loops.py`).
+  - The reviewer's .wma and LIST/INFO .wav read their tags, and a drive root with a
+    Recycle Bin and `._` files indexes only the real tracks.
+  - In Chromium (`.scratch/review-ui/pw3.py`), a new search that drops the playing row
+    stops the preview and the next Space plays the new first row; a search with no rows
+    stops it too.
+  - `.scratch/abort_queue.py` against a live server on the review home: of five isolated
+    previews abandoned while queued, only the one already separating was written, and the
+    wanted preview came back in 5.6 s. `request.is_disconnected()` could not do this: the
+    `@app.middleware` wrapper drops the disconnect message it polls for, so the endpoint
+    waits on the next receive instead. `test_an_isolated_preview_the_page_gave_up_on_is_not_separated`
+    fails without that check.
+  - `ui --host 0.0.0.0` shows a 127.0.0.1 URL, `--host 192.0.2.7` says it cannot listen,
+    a held port still says it is in use, `--shifts -1` is refused, bare `breakdig` prints
+    help.
 - House rules:
   - No em dashes anywhere in the shipped files.
-  - The difflib clone check (`.scratch/clonecheck.py`) finds 1 function pair at or above
-    0.45: two index tests at 0.56 that share their setup, the same as before the third
-    pass. Nothing is at 0.6 or above.
+  - The difflib clone check (`.scratch/clonecheck.py`) finds 2 function pairs at or above
+    0.45: two index tests at 0.56 that share their setup, as before, and two duplicate
+    takeover tests at 0.50. Nothing is at 0.6 or above. The check now skips a function
+    nested inside another, which it used to score as a copy of its parent.
   - The query refactor was checked byte for byte against a recorded baseline
     (`.scratch/baseline.py`, 1106 sections).
 - The published release: its zip holds the same wheel byte for byte, both .bat files are
@@ -302,6 +325,18 @@ zip, and the same wheel and sdist are on PyPI. The r/SP404 post has not gone up.
   until the server stops. Cue labels count beats, not bar.beat.
 - There is no search for "drums playing, whatever else is"; `--no vocals` plus the Stems
   column is the way to find bars for `--keep drums` today.
+
+- Export does not warn when a source file changed after it was indexed. A retag changes the
+  modified time too, so the warning would mostly fire for nothing.
+- Filenames like `01_Artist_-_Title` are not split into artist and title; underscores are
+  ambiguous (`50_Cent_-_In_Da_Club`).
+- An MP2 copy of the synthetic test fixture is not recognised as a duplicate of the WAV:
+  its envelope correlates at 0.987 against the 0.99 needed. Real music is denser and was not
+  tried. .ape and .mpc are listed but untested end to end, since ffmpeg cannot write them.
+- Not checked on hardware: whether an SP-404 accepts WAVs with cue and id3 chunks, and
+  paths past MAX_PATH on Windows.
+- Ideas from the UI review, not built: a warning in the page header when the CPU build of
+  torch is in use, and a Stop button in the player dock.
 
 ## Features not built (worth considering after 0.1.0)
 

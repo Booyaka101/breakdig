@@ -94,6 +94,13 @@ def _gone(path: str) -> bool:
     return not os.path.exists(path) and os.path.exists(os.path.splitdrive(path)[0] + os.sep)
 
 
+def _lossy(path: str) -> bool:
+    try:
+        return audio.probe(path).bits == 0
+    except audio.DecodeError:
+        return False
+
+
 def _same_path(a: str, b: str) -> bool:
     """Whether two spellings name one file, as Song.mp3 and song.mp3 do on Windows."""
     return os.path.normcase(a) == os.path.normcase(b)
@@ -115,6 +122,16 @@ def _lock(path: Path):
         raise Abort(f"another breakdig index run is using {path.parent}. "
                     "Wait for it to finish, then run this again.") from None
     return f
+
+
+def _mono(path: str) -> np.ndarray:
+    """The file as mono float32, read in blocks so a long mix never sits in memory as stereo."""
+    mono = np.empty(sf.info(path).frames, dtype=np.float32)
+    pos = 0
+    for b in sf.blocks(path, blocksize=1 << 20, dtype="float32", always_2d=True):
+        mono[pos: pos + len(b)] = b.mean(axis=1)
+        pos += len(b)
+    return mono[:pos]
 
 
 def _peak(path: str) -> float:
@@ -312,16 +329,19 @@ class Indexer:
         mix_db = profile.to_db(mix_env, gain_db)
         dup, lag = self._find_duplicate(duration, mix_db)
         if dup is not None:
-            if not _same_path(dup["path"], f.path) and not _gone(dup["path"]):
+            elsewhere = not _same_path(dup["path"], f.path) and not _gone(dup["path"])
+            if elsewhere and not (probe.bits and _lossy(dup["path"])):
                 raise Skip("duplicate", f"same audio as {dup['path']}", **extra, dup_of=dup["id"])
             # The same file, retagged or re-saved, and maybe renamed too. Its analysis still holds
             # unless the audio moved in time.
-            if lag == 0:
+            if lag == 0 and not elsewhere:
                 return "updated", {"dup_of": dup["id"]}, []
+            # A lossless copy of a lossy original is analysed on its own bars and takes its place,
+            # so sections are cut from it. The lossy file becomes its duplicate on the next run.
             extra["replaces"] = dup["key"]
 
         try:
-            mono = sf.read(str(wav), dtype="float32")[0].mean(axis=1)
+            mono = _mono(str(wav))
             beats, downbeats = self.beats(mono, SAMPLE_RATE)
             del mono
         except (RuntimeError, ValueError, MemoryError) as e:
@@ -331,8 +351,6 @@ class Indexer:
         if len(beats) > 1:
             extra["bpm"] = 60.0 / float(np.median(np.diff(beats)))
         if len(downbeats) < MIN_DOWNBEATS:
-            np.savez_compressed(self.index.profile_path(f.key), mix=mix_db.astype(np.float32),
-                                beats=beats, downbeats=downbeats, hop=profile.HOP_SECONDS)
             raise Skip("no_grid", f"only {len(downbeats)} downbeats found, need {MIN_DOWNBEATS}", **extra)
 
         chunk = float(CHUNK_SECONDS) if duration > LONG_FILE_SECONDS else None

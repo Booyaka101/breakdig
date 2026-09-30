@@ -1,6 +1,7 @@
 """breakdig command line."""
 
 import argparse
+import errno
 import json
 import logging
 import sqlite3
@@ -208,18 +209,23 @@ def cmd_ui(args):
     from .web.app import LOCAL_HOSTS, create_app
 
     _open(args).close()
-    url = f"http://{f'[{args.host}]' if ':' in args.host else args.host}:{args.port}"
+    # A browser cannot open the any-address itself, only this machine through it.
+    shown = {"0.0.0.0": "127.0.0.1", "::": "::1"}.get(args.host, args.host)
+    url = f"http://{f'[{shown}]' if ':' in shown else shown}:{args.port}"
     app = create_app(args.home, host=args.host)
+    # Checked before the browser opens, or it would open on whatever already holds the port.
+    try:
+        with socket.create_server((args.host, args.port),
+                                  family=socket.AF_INET6 if ":" in args.host else socket.AF_INET):
+            pass
+    except OSError as e:
+        if e.errno == errno.EADDRINUSE:
+            sys.exit(f"breakdig: port {args.port} is in use. Is breakdig ui already running? "
+                     "If not, pick another with --port.")
+        sys.exit(f"breakdig: cannot listen on {args.host} port {args.port}: {e.strerror or e}")
     if args.host not in LOCAL_HOSTS:
         print(f"warning: listening on {args.host}, so anyone who can reach this machine can browse "
               "your index and write exports to any folder.", file=sys.stderr)
-    # Checked before the browser opens, or it would open on whatever already holds the port.
-    try:
-        with socket.create_server((args.host, args.port)):
-            pass
-    except OSError:
-        sys.exit(f"breakdig: port {args.port} is in use. Is breakdig ui already running? "
-                 "If not, pick another with --port.")
     if not args.no_browser:
         threading.Timer(1.0, webbrowser.open, args=(url,)).start()
     print(f"breakdig UI on {url}  (Ctrl+C to stop)")
@@ -229,13 +235,13 @@ def cmd_ui(args):
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning", loop=loop)
 
 
-def _positive(text: str) -> int:
+def _positive(text: str, least: int = 1) -> int:
     try:
         n = int(text)
     except ValueError:
         raise argparse.ArgumentTypeError(f"expected a whole number, got {text!r}") from None
-    if n < 1:
-        raise argparse.ArgumentTypeError(f"must be 1 or more, got {n}")
+    if n < least:
+        raise argparse.ArgumentTypeError(f"must be {least} or more, got {n}")
     return n
 
 
@@ -285,12 +291,12 @@ def build_parser() -> argparse.ArgumentParser:
     # Also accepted after the command. SUPPRESS keeps the subcommand from resetting a --home given before it.
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--home", type=_path, default=argparse.SUPPRESS, help=home_help)
-    sub = p.add_subparsers(dest="cmd", required=True)
+    sub = p.add_subparsers(dest="cmd")
 
     s = sub.add_parser("index", parents=[common], help="separate and profile audio files (resumable)")
     s.add_argument("paths", nargs="+", type=_path, help="folders or files")
     s.add_argument("--model", help="audio-separator model file (default htdemucs_ft.yaml)")
-    s.add_argument("--shifts", type=int, default=1,
+    s.add_argument("--shifts", type=lambda t: _positive(t, 0), default=1,
                    help="Demucs random shifts; 2 is slightly cleaner and twice as slow (default 1)")
     s.add_argument("--retry-failed", action="store_true", help="try previously failed files again")
     s.add_argument("--exclude", action="append", default=[], metavar="GLOB",
@@ -332,7 +338,11 @@ def main(argv=None):
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="replace")
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.cmd is None:
+        parser.print_help()
+        return
     try:
         args.func(args)
     except (ValueError, OSError, sqlite3.Error) as e:

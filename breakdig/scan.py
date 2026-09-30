@@ -12,10 +12,13 @@ from mutagen.id3 import ID3
 
 from . import audio
 
-AUDIO_EXTS = {".mp3", ".flac", ".wav", ".aiff", ".aif", ".m4a", ".ogg", ".opus", ".aac", ".wma"}
+AUDIO_EXTS = {".mp3", ".flac", ".wav", ".aiff", ".aif", ".aifc", ".m4a", ".ogg", ".opus", ".aac", ".wma",
+              ".ape", ".wv", ".mpc", ".mp2"}
 # Picked up only so they can be reported as skipped instead of silently ignored.
 DRM_EXTS = {".m4p"}
 SAMPLE_BYTES = 1 << 20
+# Deleted files keep their extension in the recycle bin, so indexing a drive root would find them.
+SYSTEM_DIRS = {"$recycle.bin", "system volume information"}
 ID3_FRAMES = {"artist": "TPE1", "albumartist": "TPE2", "title": "TIT2", "album": "TALB"}
 
 
@@ -62,10 +65,12 @@ def walk(roots: list[str], exclude: list[str] = (), skip: list[str] = ()) -> lis
             out.append(root)
             continue
         for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = sorted(d for d in dirnames if not excluded(d)
+            dirnames[:] = sorted(d for d in dirnames if not excluded(d) and d.lower() not in SYSTEM_DIRS
                                  and not skipped(os.path.join(dirpath, d)))
             for name in sorted(filenames):
-                if Path(name).suffix.lower() in AUDIO_EXTS | DRM_EXTS and not excluded(name):
+                # ._ files are the resource forks macOS leaves on FAT and exFAT drives.
+                if (Path(name).suffix.lower() in AUDIO_EXTS | DRM_EXTS and not excluded(name)
+                        and not name.startswith("._")):
                     out.append(os.path.join(dirpath, name))
     return out
 
@@ -132,6 +137,12 @@ def read_tags(path: str) -> dict:
     artist = _first(tags, "artist", "albumartist")
     title = _first(tags, "title")
     album = _first(tags, "album")
+    if not (artist and title):
+        # WAV LIST/INFO and WMA tags, which mutagen's easy mode does not read.
+        tags = audio.tags(path)
+        artist = artist or _first(tags, "artist", "album_artist")
+        title = title or _first(tags, "title")
+        album = album or _first(tags, "album")
     if not (artist and title):
         stem = Path(path).stem
         parts = [p.strip() for p in stem.split(" - ")]

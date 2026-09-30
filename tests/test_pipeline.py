@@ -76,6 +76,30 @@ def test_same_audio_in_another_format_is_a_duplicate(cpu_indexer, fixture_audio,
     assert cpu_indexer.index.failures() == []
 
 
+@pytest.mark.parametrize("ext, codec", [("wv", "wavpack"), ("mp2", "mp2"), ("aifc", "pcm_f32be")])
+def test_less_common_formats_are_indexed(cpu_indexer, fixture_audio, tmp_path, ext, codec):
+    p = tmp_path / f"fixture.{ext}"
+    fmt = ["-f", "aiff"] if ext == "aifc" else []
+    subprocess.run(["ffmpeg", "-v", "error", "-i", str(fixture_audio["mix"]), "-c:a", codec, *fmt, str(p)],
+                   check=True)
+    assert scan.walk([str(tmp_path)]) == [str(p)]
+    assert index_paths(cpu_indexer, [p])[0] == ["ok"]
+    (s,) = find(cpu_indexer.index, PRESETS["drums"])
+    assert (s.first_bar, s.last_bar) == (5, 8)
+
+
+def test_a_lossless_copy_takes_over_from_a_lossy_original(cpu_indexer, fixture_audio, tmp_path):
+    wav, mp3 = tmp_path / "song.wav", tmp_path / "song.mp3"
+    shutil.copy(fixture_audio["mix"], wav)
+    subprocess.run(["ffmpeg", "-v", "error", "-i", str(wav), "-b:a", "192k", str(mp3)], check=True)
+    assert index_paths(cpu_indexer, [mp3])[0] == ["ok"]
+    assert index_paths(cpu_indexer, [wav])[0] == ["ok"]
+    (s,) = find(cpu_indexer.index, PRESETS["drums"])
+    assert s.path == str(wav) and (s.first_bar, s.last_bar) == (5, 8)
+    assert index_paths(cpu_indexer, [mp3, wav])[0] == ["duplicate"]
+    assert cpu_indexer.index.stats()["by_status"] == {"ok": 1, "duplicate": 1}
+
+
 def test_duplicate_takes_over_when_the_original_is_deleted(cpu_indexer, fixture_audio, tmp_path):
     wav, mp3 = tmp_path / "song.wav", tmp_path / "song.mp3"
     shutil.copy(fixture_audio["mix"], wav)
@@ -161,6 +185,7 @@ def test_too_few_downbeats_is_no_grid(cpu_indexer, fixture_audio):
     (row,) = cpu_indexer.index.failures()
     assert "only 7 downbeats" in row["error"]
     assert find(cpu_indexer.index, PRESETS["drums"]) == []
+    assert list(cpu_indexer.index.home.rglob("*.npz")) == []
 
 
 def test_beat_tracker_failure_is_recorded(cpu_indexer, fixture_audio):
@@ -209,13 +234,16 @@ def test_interrupted_run_resumes(cpu_indexer, fixture_audio, tmp_path):
 
 def test_walk_and_tags(tmp_path):
     (tmp_path / "sub").mkdir()
-    for name in ["03 - Artist - Song.mp3", "sub/Other.FLAC", "notes.txt", "sub/cover.jpg"]:
+    for name in ["03 - Artist - Song.mp3", "sub/Other.FLAC", "notes.txt", "sub/cover.jpg", "sub/Rip.wv",
+                 "._03 - Artist - Song.mp3", "$RECYCLE.BIN/S-1/$R1.mp3", "System Volume Information/x.wav"]:
+        (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / name).write_bytes(b"x")
-    found = scan.walk([str(tmp_path)])
-    assert [p.replace("\\", "/").split("/")[-1] for p in found] == ["03 - Artist - Song.mp3", "Other.FLAC"]
-    for exclude in (["*.flac"], ["SUB"]):
-        assert [p.replace("\\", "/").split("/")[-1] for p in scan.walk([str(tmp_path)], exclude)] == [
-            "03 - Artist - Song.mp3"]
+
+    def names(exclude=()):
+        return [p.replace("\\", "/").split("/")[-1] for p in scan.walk([str(tmp_path)], list(exclude))]
+    assert names() == ["03 - Artist - Song.mp3", "Other.FLAC", "Rip.wv"]
+    assert names(["*.flac"]) == ["03 - Artist - Song.mp3", "Rip.wv"]
+    assert names(["SUB"]) == ["03 - Artist - Song.mp3"]
     tags = scan.read_tags(str(tmp_path / "03 - Artist - Song.mp3"))
     assert (tags["artist"], tags["title"]) == ("Artist", "Song")
     tags = scan.read_tags(str(tmp_path / "07 - Song.mp3"))
@@ -302,6 +330,15 @@ def test_id3_tags_in_aiff_and_wav(fixture_audio, tmp_path, ext, fmt):
                   TALB(encoding=3, text="Real Album")):
         f.tags.add(frame)
     f.save()
+    assert scan.read_tags(str(p)) == {"artist": "Real Artist", "title": "Real Title", "album": "Real Album"}
+
+
+@pytest.mark.parametrize("ext, codec", [("wav", "pcm_s16le"), ("wma", "wmav2")])
+def test_tags_mutagen_does_not_read(fixture_audio, tmp_path, ext, codec):
+    p = tmp_path / f"untitled.{ext}"
+    subprocess.run(["ffmpeg", "-v", "error", "-i", str(fixture_audio["mix"]), "-t", "1", "-c:a", codec,
+                    "-metadata", "artist=Real Artist", "-metadata", "title=Real Title",
+                    "-metadata", "album=Real Album", str(p)], check=True)
     assert scan.read_tags(str(p)) == {"artist": "Real Artist", "title": "Real Title", "album": "Real Album"}
 
 

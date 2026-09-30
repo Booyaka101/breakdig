@@ -197,7 +197,7 @@ class Index:
 
     def candidates_near(self, duration: float, tolerance: float = 1.0) -> list[sqlite3.Row]:
         return self.conn.execute(
-            "SELECT id, key, path, duration FROM tracks WHERE status IN ('ok', 'no_grid') "
+            "SELECT id, key, path, duration FROM tracks WHERE status = 'ok' "
             "AND duration BETWEEN ? AND ?", (duration - tolerance, duration + tolerance)).fetchall()
 
     def profile_path(self, key: str) -> Path:
