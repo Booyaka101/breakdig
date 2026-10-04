@@ -1,10 +1,74 @@
 # breakdig progress
 
-State as of 2026-09-29: v0.1.0 is released. The repo is public at
-https://github.com/Booyaka101/breakdig, the GitHub release has the wheel, sdist and Windows
-zip, and the same wheel and sdist are on PyPI. The r/SP404 post has not gone up.
-On 2026-09-30 a fourth review pass (UI and core) was fixed on the `review-fixes` branch;
-see the Unreleased section of CHANGELOG.md.
+State as of 2026-10-04: 0.2.0 (`breakdig drill`) is released on the same path as 0.1.0:
+pushed to main with CI green, the `v0.2.0` tag built the GitHub release (published), and
+the wheel and sdist are on PyPI. 0.1.0 was
+released on 2026-09-29; the repo is public at
+https://github.com/Booyaka101/breakdig. The r/SP404 post has not gone up.
+On 2026-09-30 a fourth review pass (UI and core) was fixed on the `review-fixes` branch and
+merged; those changes ship in 0.2.0 (see CHANGELOG.md).
+
+## 0.2.0: `breakdig drill`, what is verified (Windows 11, RTX 4090, Python 3.11)
+
+- Test suite: `BREAKDIG_MODELS=.scratch/models .venv/Scripts/python -m pytest -q -rs` gives
+  224 passed in 187 s (186 from 0.1.0, unchanged and still passing, plus 38 new drill tests),
+  the `gpu` tests running real Demucs and beat_this on the 4090. New files:
+  `breakdig/drill.py` (planner, click synthesis, renderer, sinks, tags),
+  `breakdig/mp3.py` (streamed libmp3lame encoder + ID3), `tests/test_drill.py`. Changed:
+  `cli.py` (the `drill` subcommand, and `cmd_index`'s loop extracted into `_index_files` so
+  index and drill share it), `export.py` (the filename-cap extracted into `capped_name`, and
+  `_add_cues` is now `add_cues` with optional labels), `tests/conftest.py` (`stub_models` and
+  the CLI runner moved there so test files share them). One dependency added:
+  python-stretch==0.3.1 (MIT, cp311 wheels for Windows, Linux and macOS; verified on PyPI
+  before building).
+- Planner golden values match the brief's worked example: a 240 s song at 120 BPM with the
+  default ladder gives 7 rungs of 342.9/320.0/300.0/282.4/266.7/252.6/240.0 s with 4-beat
+  count-ins and 1-bar gaps, 2035.9 s in all, 48.9 MB at 192 kbps.
+- python-stretch semantics measured before use: `timeFactor = p/100` makes the output
+  exactly `1/(p/100)` times as long (44100 frames at 0.7 became exactly 63000), so the
+  brief's formula is literal. The stretcher runs about 90-106x realtime per core here, and
+  its output length is exact, so the renderer's trim/pad is a guard, not a fix.
+- End to end on the real 14-track CC corpus (`.scratch/cc-music`, index reused through the
+  0.1.0 rows, which upgraded themselves in 9 s with "14 updated"): 14 drill MP3s with
+  `--drop vocals`, 6.1 hours of audio, 529.9 MB, in 593 s, about 42 s per song. Every file
+  decodes at exactly its planned length (within tolerance, checked with
+  `.scratch/check-drills.py`), 44.1 kHz, 192 kbps CBR, tags and comment tag read back. A
+  second run overwrote all 14 with no `(2)` copies.
+- One real bug found by that run and fixed: a mono mix transposes to an already-contiguous
+  read-only view, which the python-stretch binding refuses; `_stretched` now always hands
+  it a copy. Stereo worked by accident because the transposed view still needed a copy.
+  A second one: the drill's comment tag stores the stems in the machine form
+  (`bass+drums+other`), because a rerun's identity match broke on the display label
+  "no vocals" containing a space. `test_cli_drill_keep_and_drop_flags` covers the rerun.
+- `--combined` over the same corpus gives one file with both beeps in the right place
+  (880 Hz verified by FFT in the test); the WAV and MP3 sinks stream, so a setlist-sized
+  combined file never sits in memory twice.
+- The 0.2.0 wheel installs into a clean venv from `dist/` and `breakdig --version` prints
+  0.2.0; twine check passes on wheel and sdist; `dist/breakdig-0.2.0-windows.zip` holds the
+  wheel, install.bat, breakdig.bat, README and LICENSE, and was unzipped into
+  `.scratch/zip-install` where `install.bat` ran green (exit 0) and the installed
+  `breakdig.bat` printed 0.2.0 with `drill` in its help.
+- A WAV drill carries a cue point on each rung's count-in, labelled `70%` and on, through
+  export's cue writer (now `add_cues`, with labels). With `--passes 2` every repeat gets
+  its own cue (`70% x2`), and a combined WAV carries one cue per song, labelled with the
+  song's title, so a 6-hour setlist file is navigable in an editor. Read back from real
+  renders on CC tracks (`.scratch/check-combined-wav.py`: cues at 0 / 1488.3 / 1849.0 s,
+  880 Hz beeps confirmed just before each non-first cue). MP3 cue points stay out of scope,
+  as the brief says.
+- A second review pass over the finished 0.2.0 found and fixed, each with a test:
+  - A `--out` folder inside the library was walked like songs on the next run, so the
+    drills got indexed and drilled themselves. Setlist scans now skip the out folder
+    (`test_cli_drill_out_folder_is_not_drilled`).
+  - The MP3 encoder turned each rendered block into one giant `bytes` object (a 342 s
+    pass peaked at about 240 MB on top of the array); it now pipes one-second slices.
+  - The drill's comment tag had a double space when a combined file recorded no key.
+  - 48 kHz sources were never exercised: the new `test_cli_drill_sample_rates` renders
+    wav (stays 48 kHz) and mp3 (resampled to 44.1 kHz, duration within 2%).
+  - The per-track lookup block inside `cmd_drill` moved into `_drill_row`, which also
+    makes the no-grid-without---bars case explicit.
+- House rules: no em dashes in any shipped file; the clone check (`.scratch/clonecheck.py`)
+  still finds only the two pre-existing test pairs at 0.56 and 0.50, nothing new.
+
 
 ## What is verified (on this PC: Windows 11, RTX 4090, driver 610.88, Python 3.11)
 
@@ -271,11 +335,27 @@ see the Unreleased section of CHANGELOG.md.
 ## Next steps for the owner
 
 1. Post to r/SP404. The draft is `.scratch/post/r-sp404-draft.md`, with notes on the
-   parts to check first.
+   parts to check first; the drill is worth its own post on r/drums or r/WeAreTheMusicMakers
+   after that.
 2. Later releases: bump `__version__`, add a dated CHANGELOG section, push, wait for CI on
    that commit, then push a `v<version>` tag. The Release workflow makes a draft release;
    publish it, then `twine upload` its wheel and sdist (the PyPI token is in
    `~/.pypirc`).
+
+## 0.2.0 leftovers and ideas, in the order I would take them
+
+- A "practice" stem label in the UI and a drill button per row would tie the drill into the
+  web UI (the brief scoped the UI tab out for 0.2.0).
+- The drill assumes the indexed bpm for count-in and gaps; a track whose bpm is absent
+  gets 120 and a printed note. beat_this gives nearly every track a bpm, so this is rare.
+- Beat-grid-aligned count-in: the drill starts the song at 0 s (or the bar A start), not at
+  a downbeat, so the count-in can land half a bar away from the first downbeat of an intro.
+  Snapping the section start to the nearest downbeat would fix it.
+- Streaming stretch: the whole song is decoded and held in memory. A 10-hour set would need
+  chunked stretching through the stateful C++ process() with crossfade at the joins.
+- `drills.csv` is rewritten per run; a `--append` would let several runs build one folder.
+- The clicks are fixed frequencies; per-user click sounds (a folder of samples) would be a
+  small, high-value addition.
 
 ## Known gaps and decisions left open
 

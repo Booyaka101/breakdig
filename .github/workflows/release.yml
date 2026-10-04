@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v0.1.0 to test that commit and attach the wheel, sdist and Windows zip
+# Push a tag like v0.2.0 to test that commit and attach the wheel, sdist and Windows zip
 # to a draft release. Publishing the draft stays a manual step.
 on:
   push:

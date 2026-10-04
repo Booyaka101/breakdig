@@ -2,45 +2,23 @@ import contextlib
 import json
 import socket
 import sqlite3
-import sys
 
 import pytest
 import uvicorn
-from conftest import GridBeats, InputAsDrums, TrueStems, needs_ffmpeg
+from conftest import InputAsDrums, needs_ffmpeg, run as run_cli, stub_models  # noqa: F401
 
-from breakdig import cli, indexer
+from breakdig import __version__, cli, indexer
 from breakdig import export as export_module
 from breakdig.db import Index
 
 pytestmark = needs_ffmpeg
 
-
-def run(capsys, *argv):
-    """Run the CLI; returns (exit code, stdout, stderr)."""
-    code = 0
-    try:
-        cli.main(list(argv))
-    except SystemExit as e:
-        code = e.code if isinstance(e.code, int) else 1
-        if isinstance(e.code, str):
-            print(e.code, file=sys.stderr)
-    out, err = capsys.readouterr()
-    return code, out, err
+run = run_cli  # the shared CLI runner from conftest
 
 
 @pytest.fixture(autouse=True)
 def no_server(monkeypatch):
     monkeypatch.setattr(uvicorn, "run", lambda *a, **kw: pytest.fail("started a server"))
-
-
-@pytest.fixture
-def stub_models(monkeypatch, fixture_audio):
-    class StubIndexer(indexer.Indexer):
-        def __init__(self, *a, **kw):
-            super().__init__(*a, **kw)
-            self._sep = TrueStems(fixture_audio)
-            self._beats = GridBeats()
-    monkeypatch.setattr(indexer, "Indexer", StubIndexer)
 
 
 def test_index_find_export_stats(capsys, tmp_path, fixture_audio, stub_models, monkeypatch):
@@ -242,4 +220,4 @@ def test_clock_rounds_before_splitting_minutes():
 
 def test_version(capsys):
     code, out, _ = run(capsys, "--version")
-    assert code == 0 and out.strip() == "breakdig 0.1.0"
+    assert code == 0 and out.strip() == f"breakdig {__version__}"

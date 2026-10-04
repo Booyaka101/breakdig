@@ -9,6 +9,7 @@ import soundfile as sf
 sys.path.insert(0, str(Path(__file__).parent / "fixtures"))
 import make_fixture  # noqa: E402
 
+from breakdig import cli, indexer  # noqa: E402
 from breakdig.db import STEMS, Index  # noqa: E402
 from breakdig.indexer import INPUT_GAIN, Indexer  # noqa: E402
 
@@ -27,6 +28,19 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "gpu" in item.keywords:
             item.add_marker(skip)
+
+
+def run(capsys, *argv):
+    """Run the CLI; returns (exit code, stdout, stderr)."""
+    code = 0
+    try:
+        cli.main(list(argv))
+    except SystemExit as e:
+        code = e.code if isinstance(e.code, int) else 1
+        if isinstance(e.code, str):
+            print(e.code, file=sys.stderr)
+    out, err = capsys.readouterr()
+    return code, out, err
 
 
 @pytest.fixture(scope="session")
@@ -90,3 +104,15 @@ def cpu_indexer(tmp_path, fixture_audio):
     yield ix
     ix.close()
     index.close()
+
+
+@pytest.fixture
+def stub_models(monkeypatch, fixture_audio):
+    """The CLI's Indexer hands back the fixture's true stems and grid, so index and drill
+    run end to end without Demucs or beat_this."""
+    class StubIndexer(indexer.Indexer):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self._sep = TrueStems(fixture_audio)
+            self._beats = GridBeats()
+    monkeypatch.setattr(indexer, "Indexer", StubIndexer)

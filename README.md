@@ -5,7 +5,9 @@ Find the drum breaks, acapellas and other bare sections in your own music, cut t
 breakdig runs every track in a folder through Demucs source separation and a downbeat
 tracker, then keeps a small index of how loud the drums, bass, vocals and everything else
 are in each bar. After that you can ask for "drums only, at least 2 bars, 85 to 100 BPM" and
-get back exact bar ranges you can audition and export from the original files.
+get back exact bar ranges you can audition and export from the original files. Or let
+`breakdig drill` turn a setlist into a tempo-ladder practice file per song: a click
+count-in, the song at 70% speed, then 75% on up to 100%.
 
 Everything runs locally. Nothing is uploaded anywhere.
 
@@ -20,7 +22,7 @@ winget install Python.Python.3.11
 winget install Gyan.FFmpeg
 ```
 
-On Windows the simplest route is the zip. Download `breakdig-0.1.0-windows.zip` from the
+On Windows the simplest route is the zip. Download `breakdig-0.2.0-windows.zip` from the
 GitHub release, unzip it somewhere permanent, and run `install.bat`. It makes a virtual
 environment next to itself, installs breakdig into it, and swaps in the CUDA build of
 PyTorch if `nvidia-smi` is present. It prints the full path to `breakdig.bat` to use
@@ -124,6 +126,69 @@ Or do all of it in the browser:
 > breakdig ui
 breakdig UI on http://127.0.0.1:8765  (Ctrl+C to stop)
 ```
+
+## Drills
+
+`breakdig drill` turns a setlist into one practice MP3 per song: a click count-in, the whole
+song at 70% speed, a one-bar gap, then 75%, 80%, 85%, 90%, 95% and 100%. Copy the files to
+your phone and practice with a tempo ladder the way Anytune's Step-It-Up trainer plays, but
+as plain files that any player runs, offline.
+
+The setlist is a folder, loose files, or an .m3u/.txt list with one path per line (# lines are
+comments). Every input is indexed first with the same resumable index as `breakdig index`, so
+the tempo and the bar grid come from the analysis:
+
+```
+> breakdig drill D:\Gigs\Nov14 --out D:\Drills
+Scanning 14 files...
+14 already indexed, 0 to do. Index: C:\Users\you\AppData\Local\breakdig
+Done in 0s: nothing new.
+
+Zipp - Pour Quoi Royale  140.2 BPM
+   70%    98.1 BPM  4:10
+   75%   105.1 BPM  3:53
+   80%   112.1 BPM  3:39
+   85%   119.2 BPM  3:26
+   90%   126.2 BPM  3:14
+   95%   133.2 BPM  3:04
+  100%   140.2 BPM  2:55
+wrote   D:\Drills\Zipp - Pour Quoi Royale - drill 70-100.mp3
+
+14 file(s) in D:\Drills
+```
+
+Each rung gets a 4-beat click count-in at its own tempo, beat 1 accented, and a bar of
+silence after, so you settle into each speed before the song comes in. A rerun overwrites
+its own files: the drill's comment tag records the source, the ladder and the stems, and a
+second song with the same artist and title becomes `... (2).mp3`. Every song is also a row
+in `drills.csv` next to the files: name, artist, title, the rung speeds, the length and the
+source path.
+
+| | |
+| --- | --- |
+| `--ladder START-END:STEP` | the speeds in percent (default 70-100:5); 50 <= start < end <= 100 and step 1 to 20 |
+| `--passes N` | repeat each rung N times (default 1) |
+| `--count-in N` | clicks before each rung (default 4) |
+| `--gap-bars N` | bars of silence after each rung (default 1) |
+| `--bars A-B` | drill bars A to B from the beat grid instead of the whole song, e.g. `--bars 9-16` |
+| `--keep STEMS` / `--drop STEMS` | drill only some stems, e.g. `--drop vocals` to practice with the band; separates each song again, so this needs a GPU and about one separation per song |
+| `--format mp3\|wav` | mp3 at 192 kbps CBR, resampled to 44.1 kHz, or wav at the source rate (default mp3) |
+| `--combined` | one file for the whole setlist instead of one per song, songs separated by two 880 Hz beeps |
+| `--json` | print a JSON manifest instead of the table |
+
+Below 65% the stretch leaves the 0.75x-1.5x range Signalsmith Stretch sounds best in, and
+the run says so before it renders anything. A WAV drill also carries a cue point on each
+rung's count-in, labelled with its speed (and on every repeat), and a combined WAV carries
+one cue per song, labelled with its title, so editors that read cues can jump straight to
+any speed or song. The `--out` folder is skipped when folders are scanned, so the drills
+never end up indexed and drilled themselves. Speed on an RTX 4090: the 14-track CC demo
+corpus became 6.1 hours of `--drop vocals` drills in about 10 minutes, 42 seconds per song,
+most of it separation. Stretching itself runs around 90x realtime on one core.
+
+The count-in and gap timing assumes 4/4 at the indexed tempo, so on a song in another meter
+the gap is not exactly a bar; the whole song is held in memory while it stretches, so for a
+20-minute mix prefer `--bars`; and a `--keep`/`--drop` drill is only as clean as Demucs, so
+listen once before trusting it.
 
 ## What you can search for
 
@@ -324,10 +389,10 @@ and Linux with the CPU build of torch.
 ```
 python -m build
 python packaging\make_windows_zip.py
-twine upload dist\breakdig-0.1.0-py3-none-any.whl dist\breakdig-0.1.0.tar.gz
+twine upload dist\breakdig-0.2.0-py3-none-any.whl dist\breakdig-0.2.0.tar.gz
 ```
 
-`make_windows_zip.py` writes `dist\breakdig-0.1.0-windows.zip` for the GitHub release.
+`make_windows_zip.py` writes `dist\breakdig-0.2.0-windows.zip` for the GitHub release.
 
 ## Credits
 

@@ -84,6 +84,12 @@ def safe_name(text: str) -> str:
     return _ILLEGAL.sub("_", text).strip().rstrip(".")
 
 
+def capped_name(head: str, suffix: str) -> str:
+    """head + suffix, with head sanitized and shortened so the whole stays under MAX_NAME."""
+    head = safe_name(head)
+    return head[: MAX_NAME - len(suffix)].rstrip(" .") + suffix
+
+
 def clip_name(s: Section, stems: str = "") -> str:
     """'{artist} - {title} - {bars} bars - {bpm} BPM - {mm.ss}.wav', at most 120 characters, with
     ' - {stems}' before the bars if only some stems are kept.
@@ -92,9 +98,7 @@ def clip_name(s: Section, stems: str = "") -> str:
     mm, ss = divmod(round(s.start), 60)
     bpm = f"{s.bpm:.0f}" if s.bpm else "unknown"
     suffix = f"{f' - {stems}' if stems else ''} - {s.bars} bars - {bpm} BPM - {mm:02d}.{ss:02d}.wav"
-    head = safe_name(f"{s.artist} - {s.title}")
-    head = head[: MAX_NAME - len(suffix)].rstrip(" .")
-    return head + suffix
+    return capped_name(f"{s.artist} - {s.title}", suffix)
 
 
 def _origin(s: Section, stems: str) -> str:
@@ -152,14 +156,16 @@ def _chunk(fourcc: bytes, body: bytes) -> bytes:
     return fourcc + struct.pack("<I", len(body)) + body + b"\0" * (len(body) % 2)
 
 
-def _add_cues(path: Path, frames: list[int]) -> None:
-    """Append a cue point per frame, labelled 'beat 1' and on, to a RIFF WAV."""
+def add_cues(path: Path, frames: list[int], labels: list[str] | None = None) -> None:
+    """Append a cue point per frame to a RIFF WAV, labelled 'beat 1' and on unless labels
+    are given."""
     if not frames:
         return
+    labels = labels or [f"beat {i}" for i in range(1, len(frames) + 1)]
     cue = struct.pack("<I", len(frames)) + b"".join(
         struct.pack("<II4sIII", i, f, b"data", 0, 0, f) for i, f in enumerate(frames, 1))
-    labels = b"".join(_chunk(b"labl", struct.pack("<I", i) + f"beat {i}".encode() + b"\0")
-                      for i in range(1, len(frames) + 1))
+    labels = b"".join(_chunk(b"labl", struct.pack("<I", i) + label.encode() + b"\0")
+                      for i, label in enumerate(labels, 1))
     with open(path, "r+b") as f:
         if f.read(4) != b"RIFF":
             return  # RF64, past 4 GB
@@ -183,7 +189,7 @@ def write_wav(clip: Clip, dest: Path, s: Section) -> None:
     tmp = dest.with_name(dest.name + ".part")
     try:
         sf.write(tmp, x, clip.sample_rate, subtype=subtype, format="WAV")
-        _add_cues(tmp, beat_frames(clip, s.beats))
+        add_cues(tmp, beat_frames(clip, s.beats))
         w = WAVE(tmp)
         w.add_tags()
         w.tags.add(TIT2(encoding=3, text=f"{s.title} (bars {s.first_bar}-{s.last_bar})"))

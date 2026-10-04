@@ -1,7 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 (2026-10-04)
 
+- `breakdig drill` turns a setlist (a folder, loose files, or an .m3u/.txt list) into one
+  practice MP3 per song: a click count-in at the rung's own tempo, the song at 70% speed, a
+  one-bar gap, then 75%, 80%, 85%, 90%, 95% and 100%. `--ladder` picks the speeds,
+  `--passes` repeats each rung, `--bars A-B` drills a section from the beat grid,
+  `--keep`/`--drop` drill some stems instead of the mix, `--combined` puts the whole setlist
+  in one file separated by two beeps, and `--format wav` writes WAV instead of 192 kbps MP3.
+  Everything is indexed first with the usual resumable indexer, a rerun overwrites its own
+  files, and `drills.csv` maps every drill back to its source. Stretching is Signalsmith
+  Stretch through python-stretch, offline. A WAV drill has a cue point on every rung (and
+  repeat), a combined WAV one per song, and the `--out` folder is skipped when setlist
+  folders are scanned.
 - Reads WavPack, Monkey's Audio, Musepack, MP2 and AIFC files too.
 - Artist and title come from WAV LIST/INFO and WMA tags, which were ignored before.
 - Indexing a drive root skips the Recycle Bin, System Volume Information and the `._` files

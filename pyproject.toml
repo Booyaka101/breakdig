@@ -5,13 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "breakdig"
 dynamic = ["version"]
-description = "Find bar-exact drum breaks, acapellas and other sections in your own music library, using GPU stem separation and downbeat tracking."
+description = "Find bar-exact drum breaks, acapellas and other sections in your own music library, and render tempo-ladder practice drills, using GPU stem separation and downbeat tracking."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Booyaka101" }]
 requires-python = ">=3.11"
-keywords = ["drum breaks", "sampling", "stem separation", "demucs", "downbeat", "beat tracking", "sp-404", "crate digging"]
+keywords = ["drum breaks", "sampling", "stem separation", "demucs", "downbeat", "beat tracking",
+            "sp-404", "crate digging", "practice", "tempo ladder"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Environment :: Console",
@@ -28,6 +29,7 @@ dependencies = [
     "audioread>=2.1.9",  # audio-separator imports it, but librosa 1.0 stopped pulling it in
     "beat-this>=1.1",
     "numpy>=2",
+    "python-stretch==0.3.1",  # Signalsmith Stretch wheels exist for 3.11 on Windows, Linux and macOS
     "soundfile>=0.12",
     "soxr>=0.3",
     "mutagen>=1.47",
